@@ -500,7 +500,9 @@
         }
       ],
       "disableableCredentialTypes": [],
-      "requiredActions": [],
+      "requiredActions": [
+        "CONFIGURE_TOTP"
+      ],
       "realmRoles": [
         "administrator"
       ],
@@ -526,7 +528,9 @@
         }
       ],
       "disableableCredentialTypes": [],
-      "requiredActions": [],
+      "requiredActions": [
+        "CONFIGURE_TOTP"
+      ],
       "realmRoles": [
         "user"
       ],
@@ -552,7 +556,9 @@
         }
       ],
       "disableableCredentialTypes": [],
-      "requiredActions": [],
+      "requiredActions": [
+        "CONFIGURE_TOTP"
+      ],
       "realmRoles": [
         "user"
       ],
@@ -2376,11 +2382,11 @@
           "userSetupAllowed": false
         },
         {
-          "authenticatorFlow": true,
-          "requirement": "CONDITIONAL",
+          "authenticator": "auth-otp-form",
+          "authenticatorFlow": false,
+          "requirement": "REQUIRED",
           "priority": 20,
-          "autheticatorFlow": true,
-          "flowAlias": "Browser - Conditional OTP",
+          "autheticatorFlow": false,
           "userSetupAllowed": false
         }
       ]
@@ -2555,7 +2561,7 @@
       "name": "Configure OTP",
       "providerId": "CONFIGURE_TOTP",
       "enabled": true,
-      "defaultAction": false,
+      "defaultAction": true,
       "priority": 0,
       "config": {}
     },

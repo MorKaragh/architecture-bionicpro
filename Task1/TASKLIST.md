@@ -1,6 +1,6 @@
 # Task1 — План выполнения (чек-лист)
 
-Состояние на сессию: **основной контур SSO + BFF + демо-отчёт + LDAP federation с маппингом ролей работает** (`make up`, логин `user1` или `john.doe`, кнопка отчёта возвращает JSON). Ниже — что уже закрыто и что осталось.
+Состояние на сессию: **SSO + BFF + отчёт + LDAP + обязательный TOTP (OTP)** (`make up`, после `reset-keycloak` первый логин — настройка OTP, затем вход). Ниже — что уже закрыто и что осталось.
 
 ---
 
@@ -52,8 +52,9 @@
 
 ## 5) Задача 5 — MFA (OTP)
 
-- [ ] В `realm-export.json` есть задел (required action `CONFIGURE_TOTP`); нужно довести в админке: OTP policy, обязательность для realm/потока.
-- [ ] Проверка входа с Google Authenticator / FreeOTP.
+- [x] В `realm-export.json`: политика OTP (`otpPolicy*`), required action `CONFIGURE_TOTP` с `defaultAction: true`, в потоке **Authentication → forms** после пароля добавлен обязательный шаг **OTP Form** (`auth-otp-form` вместо только conditional OTP).
+- [x] Локальные пользователи (`user1`, `user2`, `admin1`) с required action `CONFIGURE_TOTP` в импорте; LDAP-пользователи получают default required actions при создании.
+- [ ] Ручная проверка: Google Authenticator / FreeOTP — один полный вход и отчёт через фронт.
 
 ---
 
@@ -69,7 +70,7 @@
 - [x] Smoke: `make smoke` (с ретраями Keycloak).
 - [x] Сценарий: логин → отчёт JSON с `report_owner` = пользователь Keycloak.
 - [ ] Logout и повторная проверка, что без сессии отчёт недоступен.
-- [ ] MFA, Яндекс — по подпунктам выше (LDAP закрыт).
+- [ ] Яндекс — по подпунктам выше (MFA в конфиге закрыт, осталась ручная проверка приложением-аутентификатором).
 - [ ] Текст для отчёта курса: 1–2 абзаца про BFF, PKCE, cookie, ротацию сессии.
 
 ---
@@ -79,7 +80,7 @@
 1. **Смена `realm-export.json` не подхватывается** — Keycloak пишет «Realm already exists». Использовать `make reset-keycloak` (очистка volume через alpine-контейнер в `Makefile`).
 2. **401 на отчёте** — чаще всего не пересобран `report-api` после смены проверки токена; реже не совпал `iss` → задать `KEYCLOAK_EXPECTED_ISS` для `report-api`.
 3. **Редирект на `keycloak:8080`** — в браузере должен быть только `KEYCLOAK_PUBLIC_URL` (`http://localhost:8080`).
-4. **LDAP уже настроен** (`ldap-bionicpro` + mapper `realm-roles-from-ldap-groups`). Следующий шаг — MFA (OTP), затем Яндекс + БД профиля.
+4. **MFA (TOTP) включён в `realm-export.json`** — после смены файла нужен `make reset-keycloak`. Следующий крупный шаг — **Яндекс ID** + БД профиля.
 5. **Если LDAP не применился после рестарта** — проверьте, что в `ldap/config.ldif` используется база `dc=bionicpro,dc=local` (должна совпадать с `LDAP_DOMAIN=bionicpro.local`), затем `make reset-keycloak`.
 6. **LDAP-пользователи не появились в Keycloak** — выполните в UI: *User federation → ldap-bionicpro → Synchronize all users* (или дождитесь первого логина пользователя).
 7. **Task2+** — заменить демо-тело `/reports` в `report-api` на чтение из ClickHouse после появления витрины и Airflow.
