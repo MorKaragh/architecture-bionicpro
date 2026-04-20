@@ -1,6 +1,6 @@
 # Task1 — План выполнения (чек-лист)
 
-Состояние на сессию: **основной контур SSO + BFF + демо-отчёт работает** (`make up`, логин `user1`, кнопка отчёта возвращает JSON). Ниже — что уже закрыто и что осталось.
+Состояние на сессию: **основной контур SSO + BFF + демо-отчёт + LDAP federation с маппингом ролей работает** (`make up`, логин `user1` или `john.doe`, кнопка отчёта возвращает JSON). Ниже — что уже закрыто и что осталось.
 
 ---
 
@@ -45,8 +45,8 @@
 ## 4) Задача 4 — LDAP
 
 - [x] Контейнер `ldap` в `docker-compose`, данные из `ldap/config.ldif`.
-- [ ] В Keycloak: User Federation → LDAP (хост `ldap`, порт 389), тест входа LDAP-пользователем.
-- [ ] Маппинг ролей представительств (как в задании).
+- [x] В Keycloak: User Federation **ldap-bionicpro** (`ldap://ldap:389`, `ou=People,dc=bionicpro,dc=local`), тест входа (например `john.doe` / `password`).
+- [x] Маппинг ролей: LDAP groups `cn=user`, `cn=prothetic_user` → realm roles `user`, `prothetic_user` (mapper `realm-roles-from-ldap-groups` в импорте `realm-export.json`).
 
 ---
 
@@ -69,7 +69,7 @@
 - [x] Smoke: `make smoke` (с ретраями Keycloak).
 - [x] Сценарий: логин → отчёт JSON с `report_owner` = пользователь Keycloak.
 - [ ] Logout и повторная проверка, что без сессии отчёт недоступен.
-- [ ] LDAP, MFA, Яндекс — по подпунктам выше.
+- [ ] MFA, Яндекс — по подпунктам выше (LDAP закрыт).
 - [ ] Текст для отчёта курса: 1–2 абзаца про BFF, PKCE, cookie, ротацию сессии.
 
 ---
@@ -79,5 +79,7 @@
 1. **Смена `realm-export.json` не подхватывается** — Keycloak пишет «Realm already exists». Использовать `make reset-keycloak` (очистка volume через alpine-контейнер в `Makefile`).
 2. **401 на отчёте** — чаще всего не пересобран `report-api` после смены проверки токена; реже не совпал `iss` → задать `KEYCLOAK_EXPECTED_ISS` для `report-api`.
 3. **Редирект на `keycloak:8080`** — в браузере должен быть только `KEYCLOAK_PUBLIC_URL` (`http://localhost:8080`).
-4. **Следующий логичный шаг по Task1** — LDAP federation в UI Keycloak, затем MFA, затем Яндекс + БД профиля.
-5. **Task2+** — заменить демо-тело `/reports` в `report-api` на чтение из ClickHouse после появления витрины и Airflow.
+4. **LDAP уже настроен** (`ldap-bionicpro` + mapper `realm-roles-from-ldap-groups`). Следующий шаг — MFA (OTP), затем Яндекс + БД профиля.
+5. **Если LDAP не применился после рестарта** — проверьте, что в `ldap/config.ldif` используется база `dc=bionicpro,dc=local` (должна совпадать с `LDAP_DOMAIN=bionicpro.local`), затем `make reset-keycloak`.
+6. **LDAP-пользователи не появились в Keycloak** — выполните в UI: *User federation → ldap-bionicpro → Synchronize all users* (или дождитесь первого логина пользователя).
+7. **Task2+** — заменить демо-тело `/reports` в `report-api` на чтение из ClickHouse после появления витрины и Airflow.
