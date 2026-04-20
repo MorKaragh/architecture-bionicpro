@@ -20,7 +20,7 @@ services:
       KC_DB_URL: jdbc:postgresql://keycloak_db:5432/keycloak_db
       KC_DB_USERNAME: keycloak_user
       KC_DB_PASSWORD: keycloak_password
-    command: 
+    command:
       - start-dev
       - --import-realm
     volumes:
@@ -29,6 +29,54 @@ services:
       - "8080:8080"
     depends_on:
       - keycloak_db
+
+  ldap:
+    image: osixia/openldap:1.5.0
+    environment:
+      LDAP_ORGANISATION: BionicPRO
+      LDAP_DOMAIN: bionicpro.local
+      LDAP_ADMIN_PASSWORD: admin
+    command: --copy-service
+    volumes:
+      - ./ldap/config.ldif:/container/service/slapd/assets/config/bootstrap/ldif/custom/config.ldif:ro
+    ports:
+      - "389:389"
+
+  report-api:
+    build:
+      context: ./report-api
+      dockerfile: Dockerfile
+    environment:
+      KEYCLOAK_BASE_URL: http://keycloak:8080
+      KEYCLOAK_REALM: reports-realm
+    ports:
+      - "8001:8001"
+    depends_on:
+      - keycloak
+
+  bionicpro-auth:
+    build:
+      context: ./bionicpro-auth
+      dockerfile: Dockerfile
+    environment:
+      KEYCLOAK_INTERNAL_URL: http://keycloak:8080
+      KEYCLOAK_PUBLIC_URL: http://localhost:8080
+      KEYCLOAK_REALM: reports-realm
+      KEYCLOAK_CLIENT_ID: bionicpro-auth
+      KEYCLOAK_CLIENT_SECRET: bionicpro-auth-secret
+      AUTH_CALLBACK_URL: http://localhost:8000/auth/callback
+      FRONTEND_BASE_URL: http://localhost:3000
+      REPORT_API_URL: http://report-api:8001
+      SESSION_COOKIE_NAME: bionicpro_session
+      SESSION_COOKIE_SECURE: "false"
+      SESSION_COOKIE_SAMESITE: lax
+      SESSION_TTL_SECONDS: "3600"
+    ports:
+      - "8000:8000"
+    depends_on:
+      - keycloak
+      - report-api
+
   frontend:
     build:
       context: ./frontend
@@ -37,6 +85,5 @@ services:
       - "3000:3000"
     environment:
       REACT_APP_API_URL: http://localhost:8000
-      REACT_APP_KEYCLOAK_URL: http://localhost:8080
-      REACT_APP_KEYCLOAK_REALM: reports-realm
-      REACT_APP_KEYCLOAK_CLIENT_ID: reports-frontend
+    depends_on:
+      - bionicpro-auth
