@@ -10,10 +10,13 @@ services:
     ports:
       - "5433:5432"
   keycloak:
-    image: quay.io/keycloak/keycloak:21.1
+    build:
+      context: ./keycloak
+      dockerfile: Dockerfile
+    image: architecture-bionicpro-keycloak:26.0.7-rsp
     environment:
-      KEYCLOAK_ADMIN: admin
-      KEYCLOAK_ADMIN_PASSWORD: admin
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: admin
       KC_DB: postgres
       KC_DB_URL: jdbc:postgresql://keycloak_db:5432/keycloak_db
       KC_DB_USERNAME: keycloak_user
@@ -53,6 +56,27 @@ services:
     depends_on:
       - keycloak
 
+  app_db:
+    image: postgres:14
+    environment:
+      POSTGRES_DB: app_db
+      POSTGRES_USER: app_user
+      POSTGRES_PASSWORD: app_password
+    volumes:
+      - ./postgres-app-data:/var/lib/postgresql/data
+
+  profile-api:
+    build:
+      context: ./profile-api
+      dockerfile: Dockerfile
+    environment:
+      DATABASE_URL: postgresql://app_user:app_password@app_db:5432/app_db
+      PROFILE_INTERNAL_SECRET: profile-internal-secret-change-me
+    ports:
+      - "8002:8002"
+    depends_on:
+      - app_db
+
   bionicpro-auth:
     build:
       context: ./bionicpro-auth
@@ -66,6 +90,9 @@ services:
       AUTH_CALLBACK_URL: http://localhost:8000/auth/callback
       FRONTEND_BASE_URL: http://localhost:3000
       REPORT_API_URL: http://report-api:8001
+      PROFILE_API_URL: http://profile-api:8002
+      PROFILE_API_SECRET: profile-internal-secret-change-me
+      BIONICPRO_PUBLIC_URL: http://localhost:8000
       SESSION_COOKIE_NAME: bionicpro_session
       SESSION_COOKIE_SECURE: "false"
       SESSION_COOKIE_SAMESITE: lax
@@ -75,6 +102,7 @@ services:
     depends_on:
       - keycloak
       - report-api
+      - profile-api
 
   frontend:
     build:

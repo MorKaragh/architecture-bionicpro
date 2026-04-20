@@ -1,6 +1,6 @@
 # Task1 — План выполнения (чек-лист)
 
-Состояние на сессию: **SSO + BFF + отчёт + LDAP + обязательный TOTP (OTP)** (`make up`, после `reset-keycloak` первый логин — настройка OTP, затем вход). Ниже — что уже закрыто и что осталось.
+Состояние на сессию: **SSO + BFF + отчёт + LDAP + TOTP + profile-api + сценарий Яндекс ID (IdP через скрипт, БД профиля)**. Ниже — что уже закрыто и что осталось.
 
 ---
 
@@ -17,7 +17,7 @@
 
 - [x] На схеме отражены BFF, Keycloak, внешние учётные системы, витрина/ETL (по вашей финальной версии).
 - [x] Политика: токены IdP не во фронте; сессия через cookie (согласовано с реализацией).
-- [ ] Финальный проход: схема ↔ код (имена сервисов, порты 3000 / 8000 / 8080 / 8001).
+- [ ] Финальный проход: схема ↔ код (имена сервисов, порты 3000 / 8000 / 8001 / 8002 / 8080).
 
 ---
 
@@ -60,8 +60,9 @@
 
 ## 6) Задача 6 — Яндекс ID
 
-- [ ] Identity Provider в Keycloak + приложение в кабинете Яндекса (`client_id` / `secret`, redirect).
-- [ ] Согласие на профиль + сохранение полей в БД (отдельный сервис/таблица).
+- [x] Identity Provider в Keycloak: `scripts/configure_yandex_idp.py` / `make configure-yandex` (env `YANDEX_CLIENT_ID`, `YANDEX_CLIENT_SECRET`); redirect в кабинете Яндекса: `http://localhost:8080/realms/reports-realm/broker/yandex/endpoint`.
+- [x] Сохранение профиля: `profile-api` + `app_db` (PostgreSQL), upsert из `bionicpro-auth` по UserInfo; страница согласия `/auth/yandex-consent`, колонка `consent_given_at`.
+- [ ] Ручная проверка с реальными ключами Яндекса и входом через кнопку Yandex на форме Keycloak.
 
 ---
 
@@ -70,7 +71,7 @@
 - [x] Smoke: `make smoke` (с ретраями Keycloak).
 - [x] Сценарий: логин → отчёт JSON с `report_owner` = пользователь Keycloak.
 - [ ] Logout и повторная проверка, что без сессии отчёт недоступен.
-- [ ] Яндекс — по подпунктам выше (MFA в конфиге закрыт, осталась ручная проверка приложением-аутентификатором).
+- [ ] Ручная проверка: Яндекс-вход (ключи в кабинете) и при необходимости повтор MFA/отчёта.
 - [ ] Текст для отчёта курса: 1–2 абзаца про BFF, PKCE, cookie, ротацию сессии.
 
 ---
@@ -80,7 +81,7 @@
 1. **Смена `realm-export.json` не подхватывается** — Keycloak пишет «Realm already exists». Использовать `make reset-keycloak` (очистка volume через alpine-контейнер в `Makefile`).
 2. **401 на отчёте** — чаще всего не пересобран `report-api` после смены проверки токена; реже не совпал `iss` → задать `KEYCLOAK_EXPECTED_ISS` для `report-api`.
 3. **Редирект на `keycloak:8080`** — в браузере должен быть только `KEYCLOAK_PUBLIC_URL` (`http://localhost:8080`).
-4. **MFA (TOTP) включён в `realm-export.json`** — после смены файла нужен `make reset-keycloak`. Следующий крупный шаг — **Яндекс ID** + БД профиля.
+4. **Яндекс ID**: после `export YANDEX_CLIENT_ID / YANDEX_CLIENT_SECRET` выполнить `make configure-yandex` (Keycloak должен слушать `localhost:8080`). Данные профиля — в PostgreSQL `app_db`, том `./postgres-app-data`.
 5. **Если LDAP не применился после рестарта** — проверьте, что в `ldap/config.ldif` используется база `dc=bionicpro,dc=local` (должна совпадать с `LDAP_DOMAIN=bionicpro.local`), затем `make reset-keycloak`.
 6. **LDAP-пользователи не появились в Keycloak** — выполните в UI: *User federation → ldap-bionicpro → Synchronize all users* (или дождитесь первого логина пользователя).
 7. **Task2+** — заменить демо-тело `/reports` в `report-api` на чтение из ClickHouse после появления витрины и Airflow.

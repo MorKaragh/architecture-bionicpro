@@ -1,4 +1,5 @@
 /postgres-keycloak-data
+/postgres-app-data
 2024__yandex-architecture-sso.code-workspace
 context/
 *.bkp

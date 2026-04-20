@@ -9,7 +9,7 @@ from urllib.parse import urlencode
 
 import httpx
 from fastapi import FastAPI, HTTPException, Request, Response
-from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI(title="bionicpro-auth")
@@ -29,6 +29,9 @@ KEYCLOAK_CLIENT_ID = os.getenv("KEYCLOAK_CLIENT_ID", "bionicpro-auth")
 KEYCLOAK_CLIENT_SECRET = os.getenv("KEYCLOAK_CLIENT_SECRET", "change-me")
 FRONTEND_BASE_URL = os.getenv("FRONTEND_BASE_URL", "http://localhost:3000")
 REPORT_API_URL = os.getenv("REPORT_API_URL", "http://report-api:8001")
+PROFILE_API_URL = os.getenv("PROFILE_API_URL", "").rstrip("/")
+PROFILE_API_SECRET = os.getenv("PROFILE_API_SECRET", "")
+BIONICPRO_PUBLIC_URL = os.getenv("BIONICPRO_PUBLIC_URL", "http://localhost:8000").rstrip("/")
 
 COOKIE_NAME = os.getenv("SESSION_COOKIE_NAME", "bionicpro_session")
 COOKIE_SECURE = os.getenv("SESSION_COOKIE_SECURE", "false").lower() == "true"
@@ -39,6 +42,7 @@ PUBLIC_REALM_URL = f"{KEYCLOAK_PUBLIC_URL}/realms/{KEYCLOAK_REALM}"
 INTERNAL_REALM_URL = f"{KEYCLOAK_INTERNAL_URL}/realms/{KEYCLOAK_REALM}"
 AUTH_URL = f"{PUBLIC_REALM_URL}/protocol/openid-connect/auth"
 TOKEN_URL = f"{INTERNAL_REALM_URL}/protocol/openid-connect/token"
+USERINFO_URL = f"{INTERNAL_REALM_URL}/protocol/openid-connect/userinfo"
 LOGOUT_URL = f"{INTERNAL_REALM_URL}/protocol/openid-connect/logout"
 CALLBACK_URL = os.getenv("AUTH_CALLBACK_URL", "http://localhost:8000/auth/callback")
 
@@ -129,6 +133,81 @@ def _rotate_session(old_session_id: str, session: dict[str, Any], response: Resp
     return new_session_id
 
 
+def _user_from_userinfo(userinfo: dict[str, Any]) -> dict[str, Any]:
+    yid = userinfo.get("yandex_id")
+    if yid is not None and not isinstance(yid, str):
+        yid = str(yid)
+    return {
+        "sub": userinfo.get("sub"),
+        "preferred_username": userinfo.get("preferred_username"),
+        "email": userinfo.get("email"),
+        "yandex_id": yid,
+        "yandex_login": userinfo.get("yandex_login"),
+    }
+
+
+async def _fetch_userinfo(access_token: str) -> dict[str, Any]:
+    async with httpx.AsyncClient(timeout=15.0) as client:
+        resp = await client.get(
+            USERINFO_URL,
+            headers={"Authorization": f"Bearer {access_token}"},
+        )
+    if resp.status_code != 200:
+        return {}
+    return resp.json()
+
+
+async def _profile_upsert(userinfo: dict[str, Any]) -> None:
+    if not PROFILE_API_URL or not PROFILE_API_SECRET:
+        return
+    sub = userinfo.get("sub")
+    if not sub:
+        return
+    yid = userinfo.get("yandex_id")
+    if yid is not None and not isinstance(yid, str):
+        yid = str(yid)
+    body = {
+        "keycloak_sub": sub,
+        "email": userinfo.get("email"),
+        "preferred_username": userinfo.get("preferred_username"),
+        "yandex_id": yid,
+        "yandex_login": userinfo.get("yandex_login"),
+        "profile_json": userinfo,
+    }
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        await client.post(
+            f"{PROFILE_API_URL}/internal/profiles/upsert",
+            json=body,
+            headers={"X-Internal-Secret": PROFILE_API_SECRET},
+        )
+
+
+async def _profile_needs_consent(sub: str) -> bool:
+    if not PROFILE_API_URL or not PROFILE_API_SECRET:
+        return False
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        resp = await client.get(
+            f"{PROFILE_API_URL}/internal/profiles/{sub}",
+            headers={"X-Internal-Secret": PROFILE_API_SECRET},
+        )
+    if resp.status_code == 404:
+        return False
+    if resp.status_code != 200:
+        return False
+    data = resp.json()
+    return bool(data.get("needs_consent"))
+
+
+async def _profile_record_consent(sub: str) -> None:
+    if not PROFILE_API_URL or not PROFILE_API_SECRET:
+        return
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        await client.post(
+            f"{PROFILE_API_URL}/internal/profiles/{sub}/consent",
+            headers={"X-Internal-Secret": PROFILE_API_SECRET},
+        )
+
+
 @app.get("/healthz")
 async def healthz() -> dict[str, str]:
     return {"status": "ok"}
@@ -194,28 +273,59 @@ async def auth_callback(code: str, state: str, request: Request) -> RedirectResp
             raise HTTPException(status_code=401, detail="Code exchange failed")
         token_data = token_resp.json()
 
-        userinfo = _decode_jwt_payload(token_data["access_token"])
+        access_token = token_data["access_token"]
+        userinfo = await _fetch_userinfo(access_token)
         if not userinfo.get("sub"):
-            raise HTTPException(status_code=401, detail="Unable to parse user token")
+            userinfo = _decode_jwt_payload(access_token)
+        if not userinfo.get("sub"):
+            raise HTTPException(status_code=401, detail="Unable to resolve user")
 
     now_ts = time.time()
     session_id = _new_session_id()
     sessions[session_id] = {
-        "user": {
-            "sub": userinfo.get("sub"),
-            "preferred_username": userinfo.get("preferred_username"),
-            "email": userinfo.get("email"),
-        },
-        "access_token": token_data["access_token"],
+        "user": _user_from_userinfo(userinfo),
+        "access_token": access_token,
         "refresh_token": token_data.get("refresh_token"),
         "access_expires_at": now_ts + int(token_data.get("expires_in", 60)),
         "expires_at": now_ts + SESSION_TTL_SECONDS,
     }
 
-    resp = RedirectResponse(url=FRONTEND_BASE_URL, status_code=302)
+    await _profile_upsert(userinfo)
+    next_url = FRONTEND_BASE_URL
+    sub = userinfo.get("sub")
+    if sub and await _profile_needs_consent(sub):
+        next_url = f"{BIONICPRO_PUBLIC_URL}/auth/yandex-consent"
+
+    resp = RedirectResponse(url=next_url, status_code=302)
     resp.set_cookie(COOKIE_NAME, session_id, **_cookie_kwargs())
     resp.delete_cookie(OAUTH_STATE_COOKIE, path="/")
     resp.delete_cookie(OAUTH_VERIFIER_COOKIE, path="/")
+    return resp
+
+
+@app.get("/auth/yandex-consent", response_class=HTMLResponse)
+async def yandex_consent_page(request: Request) -> HTMLResponse:
+    _get_active_session(request)
+    return HTMLResponse(
+        content=(
+            "<!DOCTYPE html><html><head><meta charset='utf-8'><title>Согласие</title></head><body>"
+            "<p>Сохранить данные профиля Яндекса в сервисе BionicPRO (локальная учебная среда)?</p>"
+            "<form method='post' action='/auth/yandex-consent'>"
+            "<button type='submit'>Согласен</button>"
+            "</form></body></html>"
+        ),
+        status_code=200,
+    )
+
+
+@app.post("/auth/yandex-consent")
+async def yandex_consent_post(request: Request) -> RedirectResponse:
+    old_sid, session = _get_active_session(request)
+    sub = session["user"].get("sub")
+    if sub:
+        await _profile_record_consent(sub)
+    resp = RedirectResponse(url=FRONTEND_BASE_URL, status_code=302)
+    _rotate_session(old_sid, session, resp)
     return resp
 
 
