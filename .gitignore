@@ -1,6 +1,8 @@
 /postgres-keycloak-data
 /postgres-app-data
 2024__yandex-architecture-sso.code-workspace
-context/
+# служебные артефакты / контекст для LLM — не коммитить
+**/context/
+**/TASKLIST.md
 *.bkp
 .$*.bkp
