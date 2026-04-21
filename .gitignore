@@ -1,5 +1,9 @@
 /postgres-keycloak-data
 /postgres-app-data
+/postgres-sources-data
+/postgres-airflow-data
+/clickhouse-data
+/airflow/logs
 2024__yandex-architecture-sso.code-workspace
 # служебные артефакты / контекст для LLM — не коммитить
 **/context/

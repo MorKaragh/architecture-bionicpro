@@ -1,8 +1,10 @@
 COMPOSE = docker compose
+export AIRFLOW_UID := $(shell id -u)
 
 .PHONY: up down restart logs ps smoke reset-keycloak configure-yandex
 
 up:
+	mkdir -p airflow/logs
 	$(COMPOSE) up -d --build
 
 down:

@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+cd "$(dirname "$0")/.."
+
 retry_curl() {
   local url="$1"
   local attempts="${2:-20}"
@@ -37,10 +39,22 @@ retry_curl http://localhost:8080/realms/reports-realm/.well-known/openid-configu
 curl -fsS http://localhost:8080/realms/reports-realm/.well-known/openid-configuration >/dev/null
 echo "keycloak realm: ok"
 
-echo "[5/5] Check profile-api health"
+echo "[5/7] Check profile-api health"
 retry_curl http://localhost:8002/healthz
 curl -fsS http://localhost:8002/healthz
 echo
 echo "profile-api: ok"
+
+echo "[6/7] Check ClickHouse HTTP"
+retry_curl http://localhost:8123/ping 30 2
+curl -fsS http://localhost:8123/ping
+echo
+echo "clickhouse: ok"
+
+echo "[7/7] Check Airflow webserver (может подниматься дольше остальных)"
+retry_curl http://localhost:8088/health 60 3
+curl -fsS http://localhost:8088/health
+echo
+echo "airflow: ok"
 
 echo "Smoke check passed."
