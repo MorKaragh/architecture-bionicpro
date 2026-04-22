@@ -4,6 +4,7 @@
 /postgres-airflow-data
 /clickhouse-data
 /airflow/logs
+/airflow/dags/__pycache__/
 2024__yandex-architecture-sso.code-workspace
 # служебные артефакты / контекст для LLM — не коммитить
 **/context/
