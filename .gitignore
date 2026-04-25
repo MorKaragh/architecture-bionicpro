@@ -3,6 +3,7 @@
 /postgres-sources-data
 /postgres-airflow-data
 /clickhouse-data
+/minio-data
 /airflow/logs
 /airflow/dags/__pycache__/
 2024__yandex-architecture-sso.code-workspace

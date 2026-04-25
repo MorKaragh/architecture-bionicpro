@@ -11,6 +11,7 @@
 - `OpenLDAP`: пользователи и группы в `ldap/config.ldif` (база `dc=bionicpro,dc=local`). В Keycloak включена федерация **ldap-bionicpro** (`ldap://ldap:389`), маппинг групп LDAP `cn=user` / `cn=prothetic_user` → realm roles `user` / `prothetic_user`. После `make reset-keycloak` при первом входе LDAP-пользователь импортируется автоматически; при необходимости синхронизация: **User federation → ldap-bionicpro → Synchronize all users**.
 - **`profile-api` + PostgreSQL (`app_db`)**: таблица профилей пользователя; после входа BFF забирает **UserInfo** Keycloak и сохраняет JSON; для пользователей с атрибутами Яндекса показывается страница **согласия** `/auth/yandex-consent`, затем фиксируется `consent_given_at`.
 - **Яндекс ID**: образ Keycloak собирается с JAR **[keycloak-russian-providers](https://github.com/playa-ru/keycloak-russian-providers)** (`ru.playa.keycloak:keycloak-russian-providers:26.0.0.rsp`) и его runtime-зависимостями **`json-path` / `json-smart` / `accessors-smart`** (см. `keycloak/Dockerfile`) — иначе при маппинге атрибутов возможен `NoClassDefFoundError: com.jayway.jsonpath.JsonPath`. Провайдер **`yandex`** (OAuth2 к API Яндекса, без навязывания scope `openid`). Настройка: `scripts/configure_yandex_idp.py` / `make configure-yandex`. Redirect URI в кабинете Яндекса: `http://localhost:8080/realms/reports-realm/broker/yandex/endpoint` (при другом хосте замените префикс на свой `KEYCLOAK_PUBLIC_URL`).
+- **Задание 3 (S3 + CDN)**: **`minio`** с бакетом `bionicpro-reports` (S3 API), **`cdn`** — Nginx на порту **`8090`** с `proxy_cache` для префикса `/reports-cache/` (прокси на MinIO). **`report-api`** перед полным чтением витрины проверяет объект в S3 по ключу `reports/{user_key}/{data_as_of}.json`; при попадании отдаёт данные из объекта и поле **`report_url`** (публичная ссылка на CDN). После следующего прогона ETL меняется `data_as_of` → новый ключ → обновление без ручной инвалидации; старые объекты можно подчистить политикой lifecycle в проде.
 
 ## Быстрый старт
 
@@ -26,6 +27,10 @@ make up
 - profile-api: `http://localhost:8002`
 - Keycloak: `http://localhost:8080` (admin/admin)
 - LDAP: `ldap://localhost:389`
+- MinIO API: `http://localhost:9005`, консоль MinIO: `http://localhost:9006` (учётные данные см. `docker-compose.yaml`)
+- CDN (Nginx → MinIO): `http://localhost:8090/reports-cache/…`
+
+Переменная **`CDN_PUBLIC_BASE_URL`** в `report-api` задаёт базовый URL ссылок в ответе **`/reports`** (по умолчанию `http://localhost:8090/reports-cache`). При деплое за другим хостом замените её на публичный адрес CDN.
 
 ## Быстрая проверка
 
@@ -70,7 +75,7 @@ make configure-yandex
 1. Откройте `http://localhost:3000`.
 2. Нажмите `Login via bionicpro-auth`.
 3. Войдите в Keycloak: `user1 / password123` **или** LDAP `john.doe / password`. При **первом** входе после `make reset-keycloak` Keycloak попросит **настроить OTP** (QR в Google Authenticator / FreeOTP / Microsoft Authenticator), затем ввести одноразовый код.
-4. После callback вернёт на frontend; кнопка `Download Report` получит отчёт через BFF.
+4. После callback вернёт на frontend; кнопка `Download Report` получит отчёт через BFF (JSON от **`report-api`**, при наличии витрины — поле **`report_url`** и проверка заголовка **`X-Cache-Status`** при запросе JSON с CDN).
 
 ## Важные замечания
 

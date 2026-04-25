@@ -6,6 +6,7 @@ const ReportPage: React.FC = () => {
   const [authenticated, setAuthenticated] = useState(false);
   const [username, setUsername] = useState<string>('');
   const [reportJson, setReportJson] = useState<string>('');
+  const [cdnNote, setCdnNote] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const apiUrl = process.env.REACT_APP_API_URL || 'http://localhost:8000';
@@ -49,6 +50,7 @@ const ReportPage: React.FC = () => {
     setAuthenticated(false);
     setUsername('');
     setReportJson('');
+    setCdnNote(null);
   };
 
   const downloadReport = async () => {
@@ -56,6 +58,7 @@ const ReportPage: React.FC = () => {
       setLoading(true);
       setError(null);
       setReportJson('');
+      setCdnNote(null);
 
       const response = await fetch(`${apiUrl}/reports`, {
         credentials: 'include',
@@ -66,6 +69,31 @@ const ReportPage: React.FC = () => {
 
       const payload = await response.json();
       setReportJson(JSON.stringify(payload, null, 2));
+
+      const reportUrl = typeof payload?.report_url === 'string' ? payload.report_url : null;
+      if (reportUrl) {
+        try {
+          // Тот же BFF (:8000): нужна сессионная cookie, иначе /reports-cache/* вернёт 401.
+          const cdnResp = await fetch(reportUrl, {
+            method: 'GET',
+            mode: 'cors',
+            credentials: 'include',
+          });
+          const cacheHdr = cdnResp.headers.get('X-Cache-Status');
+          setCdnNote(
+            cacheHdr
+              ? `CDN: ${reportUrl}\nX-Cache-Status: ${cacheHdr}`
+              : `CDN: ${reportUrl}${cdnResp.ok ? '' : `\nHTTP ${cdnResp.status}`}`
+          );
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          setCdnNote(
+            `Запрос JSON с CDN из браузера не прошёл (${msg}). ` +
+              `Частая причина — CORS / Private Network Access; после правки nginx перезапустите контейнер cdn. ` +
+              `Откройте ссылку вручную или используйте JSON из ответа API выше:\n${reportUrl}`
+          );
+        }
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred');
     } finally {
@@ -118,6 +146,12 @@ const ReportPage: React.FC = () => {
           <div className="mt-4 p-4 bg-red-100 text-red-700 rounded">
             {error}
           </div>
+        )}
+
+        {cdnNote && (
+          <pre className="mt-4 p-3 text-xs bg-blue-50 text-blue-900 rounded overflow-x-auto whitespace-pre-wrap">
+            {cdnNote}
+          </pre>
         )}
 
         {reportJson && (

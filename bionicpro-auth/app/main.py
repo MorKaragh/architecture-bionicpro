@@ -5,7 +5,7 @@ import os
 import secrets
 import time
 from typing import Any
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlparse
 
 import httpx
 from fastapi import FastAPI, HTTPException, Request, Response
@@ -20,6 +20,7 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["X-Cache-Status", "Cache-Control", "ETag", "Content-Type", "Last-Modified"],
 )
 
 KEYCLOAK_INTERNAL_URL = os.getenv("KEYCLOAK_INTERNAL_URL", "http://keycloak:8080")
@@ -32,6 +33,7 @@ REPORT_API_URL = os.getenv("REPORT_API_URL", "http://report-api:8001")
 PROFILE_API_URL = os.getenv("PROFILE_API_URL", "").rstrip("/")
 PROFILE_API_SECRET = os.getenv("PROFILE_API_SECRET", "")
 BIONICPRO_PUBLIC_URL = os.getenv("BIONICPRO_PUBLIC_URL", "http://localhost:8000").rstrip("/")
+CDN_INTERNAL_URL = os.getenv("CDN_INTERNAL_URL", "http://cdn:8090/reports-cache").rstrip("/")
 
 COOKIE_NAME = os.getenv("SESSION_COOKIE_NAME", "bionicpro_session")
 COOKIE_SECURE = os.getenv("SESSION_COOKIE_SECURE", "false").lower() == "true"
@@ -208,6 +210,25 @@ async def _profile_record_consent(sub: str) -> None:
         )
 
 
+
+def _rewrite_report_url_for_bff(payload: dict[str, Any]) -> dict[str, Any]:
+    report_url = payload.get("report_url")
+    if not isinstance(report_url, str) or not report_url:
+        return payload
+
+    parsed = urlparse(report_url)
+    report_path = parsed.path or ""
+    marker = "/reports-cache/"
+    marker_idx = report_path.find(marker)
+    if marker_idx >= 0:
+        suffix = report_path[marker_idx + len(marker):].lstrip("/")
+    else:
+        suffix = report_path.lstrip("/")
+
+    rewritten = dict(payload)
+    rewritten["report_url"] = f"{BIONICPRO_PUBLIC_URL}/reports-cache/{suffix}"
+    return rewritten
+
 @app.get("/healthz")
 async def healthz() -> dict[str, str]:
     return {"status": "ok"}
@@ -372,7 +393,40 @@ async def get_report(request: Request) -> JSONResponse:
     if report_resp.status_code != 200:
         raise HTTPException(status_code=report_resp.status_code, detail=report_resp.text)
 
-    payload = report_resp.json()
+    payload = _rewrite_report_url_for_bff(report_resp.json())
     response = JSONResponse(payload)
+    _rotate_session(old_sid, session, response)
+    return response
+
+
+@app.get("/reports-cache/{object_path:path}")
+async def proxy_cdn_report(object_path: str, request: Request) -> Response:
+    old_sid, session = _get_active_session(request)
+    await _refresh_access_token_if_needed(session)
+
+    object_path = object_path.lstrip("/")
+    if not object_path:
+        raise HTTPException(status_code=400, detail="Object path is required")
+
+    target_url = f"{CDN_INTERNAL_URL}/{object_path}"
+    async with httpx.AsyncClient(timeout=20.0) as client:
+        cdn_resp = await client.get(target_url)
+
+    if cdn_resp.status_code >= 400:
+        raise HTTPException(status_code=cdn_resp.status_code, detail="CDN fetch failed")
+
+    response = Response(content=cdn_resp.content, status_code=cdn_resp.status_code)
+    passthrough_headers = [
+        "content-type",
+        "cache-control",
+        "etag",
+        "last-modified",
+        "x-cache-status",
+    ]
+    for header_name in passthrough_headers:
+        value = cdn_resp.headers.get(header_name)
+        if value:
+            response.headers[header_name] = value
+
     _rotate_session(old_sid, session, response)
     return response
