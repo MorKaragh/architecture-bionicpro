@@ -27,6 +27,7 @@ CLICKHOUSE_HOST = os.getenv("CLICKHOUSE_HOST", "clickhouse")
 CLICKHOUSE_HTTP_PORT = int(os.getenv("CLICKHOUSE_HTTP_PORT", "8123"))
 CLICKHOUSE_USER = os.getenv("CLICKHOUSE_USER", "default")
 CLICKHOUSE_PASSWORD = os.getenv("CLICKHOUSE_PASSWORD", "")
+CLICKHOUSE_REPORT_TABLE = os.getenv("CLICKHOUSE_REPORT_TABLE", "reports.user_report_mart")
 
 S3_ENDPOINT_URL = os.getenv("S3_ENDPOINT_URL", "http://minio:9000")
 S3_ACCESS_KEY = os.getenv("S3_ACCESS_KEY", "minioadmin")
@@ -168,13 +169,15 @@ async def get_report(authorization: str | None = Header(default=None)) -> dict:
         raise HTTPException(status_code=401, detail="Token has no user identifier")
 
     ch = _get_clickhouse()
+    report_table = CLICKHOUSE_REPORT_TABLE
     watermark = ch.query(
         """
         SELECT data_as_of
-        FROM reports.user_report_mart
-        WHERE user_key = {user_key:String}
+        FROM {table}
+        WHERE user_key = {{user_key:String}}
+        ORDER BY data_as_of DESC
         LIMIT 1
-        """,
+        """.format(table=report_table),
         parameters={"user_key": str(user_key)},
     )
     wm_rows = watermark.result_rows
@@ -214,10 +217,11 @@ async def get_report(authorization: str | None = Header(default=None)) -> dict:
             training_sessions,
             battery_cycles,
             crm_segment
-        FROM reports.user_report_mart
-        WHERE user_key = {user_key:String}
+        FROM {table}
+        WHERE user_key = {{user_key:String}}
+        ORDER BY data_as_of DESC
         LIMIT 1
-        """,
+        """.format(table=report_table),
         parameters={"user_key": str(user_key)},
     )
     mrows = metrics.result_rows

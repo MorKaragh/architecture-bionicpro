@@ -1,6 +1,6 @@
 """
-ETL: PostgreSQL (CRM + телеметрия) → витрина reports.user_report_mart в ClickHouse.
-Расписание задаётся в DAG; data_as_of — момент успешной загрузки витрины.
+ETL: PostgreSQL (только телеметрия) → reports.telemetry_agg_mart в ClickHouse.
+CRM больше не выгружается массово: CRM-данные поступают через CDC (Debezium → Kafka → ClickHouse).
 """
 
 from __future__ import annotations
@@ -34,14 +34,12 @@ def run_mart_etl() -> None:
             cur.execute(
                 """
                 SELECT
-                    c.user_key,
+                    t.user_key,
                     COALESCE(SUM(t.uptime_hours), 0)::double precision AS uptime,
                     COALESCE(SUM(t.training_sessions), 0)::bigint AS sessions,
-                    COALESCE(SUM(t.battery_cycles), 0)::bigint AS cycles,
-                    c.segment
-                FROM crm.clients c
-                LEFT JOIN telemetry.daily_stats t ON t.user_key = c.user_key
-                GROUP BY c.user_key, c.segment
+                    COALESCE(SUM(t.battery_cycles), 0)::bigint AS cycles
+                FROM telemetry.daily_stats t
+                GROUP BY t.user_key
                 """
             )
             rows = cur.fetchall()
@@ -55,7 +53,7 @@ def run_mart_etl() -> None:
         username=os.environ.get("CLICKHOUSE_USER", "default"),
         password=os.environ.get("CLICKHOUSE_PASSWORD", ""),
     )
-    ch.command("TRUNCATE TABLE reports.user_report_mart")
+    ch.command("TRUNCATE TABLE reports.telemetry_agg_mart")
     if not rows:
         return
 
@@ -65,20 +63,18 @@ def run_mart_etl() -> None:
             float(r["uptime"]),
             int(r["sessions"]),
             int(r["cycles"]),
-            r["segment"],
             now,
         )
         for r in rows
     ]
     ch.insert(
-        "reports.user_report_mart",
+        "reports.telemetry_agg_mart",
         data,
         column_names=[
             "user_key",
             "prosthesis_uptime_hours",
             "training_sessions",
             "battery_cycles",
-            "crm_segment",
             "data_as_of",
         ],
     )
@@ -94,7 +90,7 @@ default_args = {
 with DAG(
     dag_id="bionicpro_report_mart",
     default_args=default_args,
-    description="CRM + телеметрия → витрина отчётов (ClickHouse)",
+    description="Телеметрия → telemetry_agg_mart (CRM приходит в ClickHouse через Debezium CDC)",
     schedule=timedelta(minutes=5),
     start_date=datetime(2024, 1, 1),
     catchup=False,
