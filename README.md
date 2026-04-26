@@ -1,4 +1,4 @@
-# BionicPRO: архитектура и реализация заданий
+# BionicPRO: архитектура и реализация
 
 Проект реализует единый защищённый контур доступа к отчётам пользователей протезов: аутентификация через Keycloak и BFF, подготовка отчётных витрин, кэширование отчётов в S3/CDN и CDC-поток CRM.
 
@@ -53,3 +53,8 @@ make up
 ```bash
 make smoke
 ```
+
+## Операционные проверки
+
+- Яндекс IdP: после `make up` выполнить `python3 scripts/configure_yandex_idp.py`, затем проверить вход через Яндекс в UI.
+- CDC-цепочка: проверить путь `Postgres (crm.*) -> Debezium -> Kafka -> ClickHouse (KafkaEngine/MV) -> report-api`.
