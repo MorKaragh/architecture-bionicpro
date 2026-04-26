@@ -1,0 +1,14 @@
+/postgres-keycloak-data
+/postgres-app-data
+/postgres-sources-data
+/postgres-airflow-data
+/clickhouse-data
+/minio-data
+/airflow/logs
+/airflow/dags/__pycache__/
+2024__yandex-architecture-sso.code-workspace
+# служебные артефакты / контекст для LLM — не коммитить
+**/context/
+**/TASKLIST.md
+*.bkp
+.$*.bkp
