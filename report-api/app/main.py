@@ -1,7 +1,7 @@
 import json
 import os
 import re
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from typing import Any
 
 import boto3
@@ -9,7 +9,7 @@ import clickhouse_connect
 import jwt
 from botocore.client import Config
 from botocore.exceptions import ClientError
-from fastapi import FastAPI, Header, HTTPException
+from fastapi import FastAPI, Header, HTTPException, Query
 from jwt import PyJWKClient
 
 app = FastAPI(title="report-api")
@@ -95,6 +95,16 @@ def _public_cdn_url(object_key: str) -> str:
     return f"{CDN_PUBLIC_BASE_URL}/{object_key}"
 
 
+def _parse_report_date(value: str, field_name: str) -> date:
+    try:
+        return date.fromisoformat(value)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Invalid {field_name}: expected ISO date YYYY-MM-DD",
+        ) from exc
+
+
 def _validate_access_token(token: str) -> dict:
     allowed_iss = {s.strip() for s in EXPECTED_ISS.split(",") if s.strip()}
     try:
@@ -157,7 +167,11 @@ async def healthz() -> dict[str, str]:
 
 
 @app.get("/reports")
-async def get_report(authorization: str | None = Header(default=None)) -> dict:
+async def get_report(
+    authorization: str | None = Header(default=None),
+    report_from: str | None = Query(default=None, alias="from"),
+    report_to: str | None = Query(default=None, alias="to"),
+) -> dict:
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Missing bearer token")
 
@@ -197,6 +211,25 @@ async def get_report(authorization: str | None = Header(default=None)) -> dict:
 
     data_as_of = wm_rows[0][0]
     data_as_of_iso = data_as_of.isoformat() if hasattr(data_as_of, "isoformat") else str(data_as_of)
+    data_as_of_date = data_as_of.date() if hasattr(data_as_of, "date") else date.fromisoformat(data_as_of_iso[:10])
+
+    requested_from: date | None = None
+    requested_to: date | None = None
+    if report_from is not None:
+        requested_from = _parse_report_date(report_from, "from")
+    if report_to is not None:
+        requested_to = _parse_report_date(report_to, "to")
+    if requested_from and requested_to and requested_from > requested_to:
+        raise HTTPException(status_code=422, detail="Invalid period: from must be <= to")
+    if requested_to and requested_to > data_as_of_date:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"Requested period is not ready yet: to={requested_to.isoformat()} "
+                f"is greater than latest data_as_of={data_as_of_date.isoformat()}"
+            ),
+        )
+
     object_key = _object_key(user_key, data_as_of)
 
     if _head_object_exists(object_key):
@@ -208,6 +241,10 @@ async def get_report(authorization: str | None = Header(default=None)) -> dict:
             "report_url": report_url,
             "delivery": "s3_cache_hit",
             "cache": {"clickhouse": "watermark_only", "s3": "hit"},
+            "requested_period": {
+                "from": requested_from.isoformat() if requested_from else None,
+                "to": requested_to.isoformat() if requested_to else None,
+            },
         }
 
     metrics = ch.query(
@@ -239,6 +276,10 @@ async def get_report(authorization: str | None = Header(default=None)) -> dict:
         "report_owner": user_key,
         "report_status": "ready",
         "data_as_of": data_as_of_iso,
+        "requested_period": {
+            "from": requested_from.isoformat() if requested_from else None,
+            "to": requested_to.isoformat() if requested_to else None,
+        },
         "summary": {
             "prosthesis_uptime_hours": float(uptime),
             "training_sessions": int(sessions),

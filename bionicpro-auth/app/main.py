@@ -385,9 +385,14 @@ async def get_report(request: Request) -> JSONResponse:
     old_sid, session = _get_active_session(request)
     await _refresh_access_token_if_needed(session)
 
+    query = request.url.query
+    report_url = f"{REPORT_API_URL}/reports"
+    if query:
+        report_url = f"{report_url}?{query}"
+
     async with httpx.AsyncClient(timeout=15.0) as client:
         report_resp = await client.get(
-            f"{REPORT_API_URL}/reports",
+            report_url,
             headers={"Authorization": f"Bearer {session['access_token']}"},
         )
     if report_resp.status_code != 200:
