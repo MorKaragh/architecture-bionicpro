@@ -17,6 +17,12 @@
 - Для защищённого контура (prod/демо по HTTPS) нужно включать `SESSION_COOKIE_SECURE=true`.
 - Настройка Яндекс IdP выполняется отдельным шагом после старта Keycloak: `python3 scripts/configure_yandex_idp.py`.
 
+## Тестовые учётные записи
+
+- Keycloak: `user1 / password123`, `user2 / password123`, `prothetic1 / prothetic123`.
+- LDAP: `john.doe / password`, `jane.smith / password`, `alex.johnson / password`.
+- Для пользователей с обязательным OTP при первом входе потребуется настройка TOTP в приложении-аутентификаторе.
+
 ## Где лежит
 
 - Диаграмма (draw.io): [`BionicPRO_C4_model.drawio.xml`](./BionicPRO_C4_model.drawio.xml)

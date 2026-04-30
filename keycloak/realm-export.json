@@ -564,6 +564,32 @@
       ],
       "notBefore": 0,
       "groups": []
+    },
+    {
+      "id": "0f5a5f7f-7f73-45cd-a0b1-6c9830c5f1d1",
+      "username": "prothetic1",
+      "enabled": true,
+      "totp": false,
+      "emailVerified": false,
+      "firstName": "Prothetic",
+      "lastName": "One",
+      "email": "prothetic1@example.com",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "prothetic123",
+          "temporary": false
+        }
+      ],
+      "disableableCredentialTypes": [],
+      "requiredActions": [
+        "CONFIGURE_TOTP"
+      ],
+      "realmRoles": [
+        "prothetic_user"
+      ],
+      "notBefore": 0,
+      "groups": []
     }
   ],
   "scopeMappings": [
