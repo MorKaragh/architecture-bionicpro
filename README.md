@@ -15,6 +15,7 @@
 - `cdn` (Nginx) раздаёт отчёты из MinIO с `proxy_cache`; внешняя ссылка для фронта проходит через BFF (`/reports-cache/*`) для сохранения защищённого контура.
 - `Airflow` обновляет витрины по расписанию; CRM-изменения доставляются через Debezium/Kafka/ClickHouse MV.
 - Для совместимости с Windows данные ClickHouse хранятся в Docker named volume (без bind mount в `/var/lib/clickhouse`).
+- Конфиги для `cdn`, `keycloak`, `ldap`, `sources_db`, `kafka-connect-init` встраиваются в Docker-образы, чтобы избежать ошибок file bind mount на разных ОС.
 
 ## Подробности по заданиям
 
@@ -98,6 +99,8 @@ make smoke
 # Аналог make smoke / make smoke-system (кроссплатформенный Python smoke)
 python3 ./scripts/system_smoke.py
 ```
+
+Для подготовки скриншотов ревью (Task1-Task4) есть интерактивный сценарий:
 
 ## Операционные проверки
 

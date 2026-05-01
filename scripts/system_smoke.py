@@ -8,6 +8,9 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
+SMOKE_USERNAME = "smoke_user"
+SMOKE_PASSWORD = "smoke_user_123"
+
 
 def log(step: str, message: str) -> None:
     print(f"[{step}] {message}")
@@ -106,19 +109,75 @@ def keycloak_clear_required_actions(token: str, user_id: str) -> None:
         fail(f"Cannot clear requiredActions for user {user_id}: status={status}, body={body}")
 
 
-def get_report_token() -> str:
+def keycloak_set_password(token: str, user_id: str, password: str) -> None:
+    status, _, body = http_request(
+        "PUT",
+        f"http://localhost:8080/admin/realms/reports-realm/users/{user_id}/reset-password",
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json",
+        },
+        data=json.dumps(
+            {
+                "type": "password",
+                "temporary": False,
+                "value": password,
+            }
+        ).encode("utf-8"),
+        timeout=15.0,
+    )
+    if status not in (200, 204):
+        fail(f"Cannot reset password for user {user_id}: status={status}, body={body}")
+
+
+def keycloak_ensure_user(token: str, username: str) -> str:
+    status, _, body = http_request(
+        "POST",
+        "http://localhost:8080/admin/realms/reports-realm/users",
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json",
+        },
+        data=json.dumps(
+            {
+                "username": username,
+                "enabled": True,
+                "emailVerified": True,
+                "requiredActions": [],
+            }
+        ).encode("utf-8"),
+        timeout=15.0,
+    )
+    if status not in (201, 409):
+        fail(f"Cannot create/ensure user {username}: status={status}, body={body}")
+    return keycloak_find_user_id(token, username)
+
+
+def ensure_smoke_user_data() -> None:
+    # Гарантируем строку для smoke_user напрямую, чтобы smoke не зависел
+    # от наличия user1/prothetic1 в витрине.
+    query = """
+    INSERT INTO reports.user_report_mart_cdc
+      (user_key, prosthesis_uptime_hours, training_sessions, battery_cycles, crm_segment, data_as_of)
+    VALUES
+      ('smoke_user', 7.0, 2, 3, 'smoke', now())
+    """
+    clickhouse_query(query)
+
+
+def get_report_token(username: str, password: str) -> str:
     status, _, body = post_form(
         "http://localhost:8080/realms/reports-realm/protocol/openid-connect/token",
         {
             "grant_type": "password",
             "client_id": "admin-cli",
-            "username": "prothetic1",
-            "password": "prothetic123",
+            "username": username,
+            "password": password,
             "scope": "openid profile email",
         },
     )
     if status != 200:
-        fail(f"Cannot get report token for prothetic1: status={status}, body={body}")
+        fail(f"Cannot get report token for {username}: status={status}, body={body}")
     token_response = json.loads(body)
 
     def jwt_payload(token: str) -> dict:
@@ -241,9 +300,11 @@ def run() -> None:
 
     log("3/5", "Получение токенов Keycloak и подготовка тестового пользователя")
     admin_token = get_admin_token()
-    user_id = keycloak_find_user_id(admin_token, "prothetic1")
+    user_id = keycloak_ensure_user(admin_token, SMOKE_USERNAME)
+    keycloak_set_password(admin_token, user_id, SMOKE_PASSWORD)
     keycloak_clear_required_actions(admin_token, user_id)
-    report_token = get_report_token()
+    ensure_smoke_user_data()
+    report_token = get_report_token(SMOKE_USERNAME, SMOKE_PASSWORD)
 
     log("4/5", "Проверка формирования отчета в report-api")
     status, _, body = http_request(

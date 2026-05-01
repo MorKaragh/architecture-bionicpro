@@ -17,6 +17,7 @@ ADD --chown=keycloak:keycloak \
 ADD --chown=keycloak:keycloak \
   https://repo1.maven.org/maven2/net/minidev/accessors-smart/2.5.0/accessors-smart-2.5.0.jar \
   /opt/keycloak/providers/accessors-smart.jar
+COPY --chown=keycloak:keycloak realm-export.json /opt/keycloak/data/import/realm-export.json
 
 USER keycloak
 RUN /opt/keycloak/bin/kc.sh build

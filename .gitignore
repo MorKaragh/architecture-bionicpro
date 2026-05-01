@@ -6,6 +6,8 @@
 /minio-data
 /airflow/logs
 /airflow/dags/__pycache__/
+**/__pycache__/
+*.pyc
 2024__yandex-architecture-sso.code-workspace
 # служебные артефакты / контекст для LLM — не коммитить
 **/context/
