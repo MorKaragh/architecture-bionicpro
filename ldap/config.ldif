@@ -1,0 +1,49 @@
+# Организационные подразделения (OU) — база совпадает с LDAP_DOMAIN=bionicpro.local (osixia/openldap)
+dn: ou=People,dc=bionicpro,dc=local
+objectClass: top
+objectClass: organizationalUnit
+ou: People
+
+dn: ou=Groups,dc=bionicpro,dc=local
+objectClass: top
+objectClass: organizationalUnit
+ou: Groups
+
+# Пользователи
+dn: uid=john.doe,ou=People,dc=bionicpro,dc=local
+objectClass: top
+objectClass: inetOrgPerson
+cn: John
+sn: Doe
+uid: john.doe
+mail: john@example.com
+userPassword: password
+
+dn: uid=jane.smith,ou=People,dc=bionicpro,dc=local
+objectClass: top
+objectClass: inetOrgPerson
+cn: Jane
+sn: Smith
+uid: jane.smith
+mail: jane@example.com
+userPassword: password
+
+dn: uid=alex.johnson,ou=People,dc=bionicpro,dc=local
+objectClass: inetOrgPerson
+cn: Alex
+sn: Johnson
+uid: alex.johnson
+mail: alex@example.com
+userPassword: password
+
+# Роли (группы) — маппинг в Keycloak realm roles: user, prothetic_user
+dn: cn=user,ou=Groups,dc=bionicpro,dc=local
+objectClass: groupOfNames
+cn: user
+member: uid=jane.smith,ou=People,dc=bionicpro,dc=local
+
+dn: cn=prothetic_user,ou=Groups,dc=bionicpro,dc=local
+objectClass: groupOfNames
+cn: prothetic_user
+member: uid=alex.johnson,ou=People,dc=bionicpro,dc=local
+member: uid=john.doe,ou=People,dc=bionicpro,dc=local
