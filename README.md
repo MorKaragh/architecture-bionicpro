@@ -59,4 +59,5 @@ make smoke
 ## Операционные проверки
 
 - Яндекс IdP: после `make up` выполнить `python3 scripts/configure_yandex_idp.py`, затем проверить вход через Яндекс в UI.
-- CDC-цепочка: проверить путь `Postgres (crm.*) -> Debezium -> Kafka -> ClickHouse (KafkaEngine/MV) -> report-api`.
+
+
