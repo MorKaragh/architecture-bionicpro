@@ -1,0 +1,17 @@
+{
+  "connector.class": "io.debezium.connector.postgresql.PostgresConnector",
+  "database.hostname": "sources_db",
+  "database.port": "5432",
+  "database.user": "sources_user",
+  "database.password": "sources_password",
+  "database.dbname": "sources_db",
+  "database.server.name": "bionicpro",
+  "plugin.name": "pgoutput",
+  "slot.name": "crm_cdc_slot",
+  "publication.name": "crm_cdc_publication",
+  "topic.prefix": "bionicpro",
+  "schema.include.list": "crm",
+  "table.include.list": "crm.clients",
+  "snapshot.mode": "initial",
+  "tombstones.on.delete": "false"
+}
