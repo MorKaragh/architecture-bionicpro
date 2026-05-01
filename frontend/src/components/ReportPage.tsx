@@ -74,10 +74,13 @@ const ReportPage: React.FC = () => {
       if (reportUrl) {
         try {
           // Тот же BFF (:8000): нужна сессионная cookie, иначе /reports-cache/* вернёт 401.
+          // cache: 'no-store' отключает кеш браузера, чтобы каждый клик был виден в логах CDN
+          // (иначе при стабильном data_as_of браузер берёт ответ из disk cache и до CDN не доходит).
           const cdnResp = await fetch(reportUrl, {
             method: 'GET',
             mode: 'cors',
             credentials: 'include',
+            cache: 'no-store',
           });
           const cacheHdr = cdnResp.headers.get('X-Cache-Status');
           setCdnNote(

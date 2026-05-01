@@ -96,7 +96,7 @@ SELECT
     toUInt32(coalesce(t.training_sessions, 0)) AS training_sessions,
     toUInt32(coalesce(t.battery_cycles, 0)) AS battery_cycles,
     c.crm_segment AS crm_segment,
-    now64(3) AS data_as_of
+    coalesce(t.telemetry_data_as_of, now64(3)) AS data_as_of
 FROM
 (
     SELECT
@@ -112,7 +112,8 @@ LEFT JOIN
         user_key,
         argMax(prosthesis_uptime_hours, data_as_of) AS prosthesis_uptime_hours,
         argMax(training_sessions, data_as_of) AS training_sessions,
-        argMax(battery_cycles, data_as_of) AS battery_cycles
+        argMax(battery_cycles, data_as_of) AS battery_cycles,
+        max(data_as_of) AS telemetry_data_as_of
     FROM reports.telemetry_agg_mart
     GROUP BY user_key
 ) AS t

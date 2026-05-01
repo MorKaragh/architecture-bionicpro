@@ -330,6 +330,10 @@ services:
       POSTGRES_PASSWORD: app_password
     volumes:
       - ./postgres-app-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U app_user -d app_db"]
+      interval: 5s
+      retries: 10
 
   profile-api:
     build:
@@ -341,7 +345,8 @@ services:
     ports:
       - "8002:8002"
     depends_on:
-      - app_db
+      app_db:
+        condition: service_healthy
 
   bionicpro-auth:
     build:
@@ -370,6 +375,7 @@ services:
       - keycloak
       - report-api
       - profile-api
+      - cdn
 
   frontend:
     build:

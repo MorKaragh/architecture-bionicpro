@@ -64,10 +64,10 @@ echo
 echo "minio: ok"
 
 echo "[9/9] Check CDN nginx (эмуляция CDN для отчётов)"
-curl -sI http://localhost:8090/reports-cache/ | head -n 1 | grep -q "HTTP" || {
-  echo "cdn nginx: no HTTP response on :8090" >&2
-  exit 1
-}
+# Раньше: HEAD /reports-cache/ — при сбоях MinIO/прокси или до готовности порта даёт пустой ответ и ложное падение смока.
+retry_curl http://localhost:8090/healthz 30 2
+curl -fsS http://localhost:8090/healthz
+echo
 echo "cdn nginx: listening"
 
 echo "Smoke check passed."

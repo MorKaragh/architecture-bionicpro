@@ -414,8 +414,10 @@ async def proxy_cdn_report(object_path: str, request: Request) -> Response:
         raise HTTPException(status_code=400, detail="Object path is required")
 
     target_url = f"{CDN_INTERNAL_URL}/{object_path}"
+    # Один вариант тела без gzip — стабильнее proxy_cache у Nginx к MinIO.
+    cdn_upstream_headers = {"Accept-Encoding": "identity"}
     async with httpx.AsyncClient(timeout=20.0) as client:
-        cdn_resp = await client.get(target_url)
+        cdn_resp = await client.get(target_url, headers=cdn_upstream_headers)
 
     if cdn_resp.status_code >= 400:
         raise HTTPException(status_code=cdn_resp.status_code, detail="CDN fetch failed")
