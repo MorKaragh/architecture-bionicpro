@@ -2,9 +2,9 @@ COMPOSE = docker compose
 export AIRFLOW_UID := $(shell id -u)
 
 # Каталоги с данными на хосте (bind mounts из docker-compose) + логи Airflow
-DATA_DIRS := postgres-keycloak-data postgres-app-data postgres-sources-data postgres-airflow-data clickhouse-data minio-data airflow/logs
+DATA_DIRS := postgres-keycloak-data postgres-app-data postgres-sources-data postgres-airflow-data minio-data airflow/logs
 
-.PHONY: up down restart logs ps smoke smoke-task4 reset-keycloak configure-yandex clean-data up-clean seed-sources-demo patch-clickhouse-mv-crm
+.PHONY: up down restart logs ps smoke smoke-system reset-keycloak configure-yandex clean-data clean-docker-all clean-docker-purge clean-full up-clean seed-sources-demo patch-clickhouse-mv-crm
 
 up:
 	mkdir -p airflow/logs
@@ -14,6 +14,21 @@ up:
 clean-data:
 	$(COMPOSE) down -v
 	docker run --rm -v "$(CURDIR):/workspace" alpine:3.20 sh -c 'rm -rf $(addprefix /workspace/,$(DATA_DIRS)) /workspace/airflow/dags/__pycache__'
+
+# Базовая очистка Docker на машине: контейнеры, неиспользуемые сети/тома, кэш билда (без удаления образов).
+clean-docker-all:
+	ids=$$(docker ps -aq); if [ -n "$$ids" ]; then docker rm -f $$ids; else echo "No docker containers to remove"; fi
+	docker network prune -f
+	docker volume prune -f
+	docker builder prune -af
+
+# Полный сброс: Docker на машине + локальные данные проекта.
+clean-full: clean-docker-all
+	docker run --rm -v "$(CURDIR):/workspace" alpine:3.20 sh -c 'rm -rf $(addprefix /workspace/,$(DATA_DIRS)) /workspace/airflow/dags/__pycache__'
+
+# Агрессивная очистка Docker (включая удаление образов).
+clean-docker-purge: clean-docker-all
+	docker image prune -af
 
 # Чистый запуск для ревью и отладки (в т.ч. когда в UI Airflow не видны DAG)
 up-clean: clean-data
@@ -34,10 +49,10 @@ ps:
 	$(COMPOSE) ps
 
 smoke:
-	./scripts/task1-smoke.sh
+	python3 ./scripts/system_smoke.py
 
-smoke-task4:
-	./scripts/task4-cdc-smoke.sh
+smoke-system:
+	python3 ./scripts/system_smoke.py
 
 # Демо-строки CRM/телеметрии для prothetic1 (если БД sources поднималась до добавления строк в init-sources.sql)
 seed-sources-demo:

@@ -1,6 +1,8 @@
 import json
 import os
 import re
+import urllib.error
+import urllib.request
 from datetime import date, datetime, timezone
 from typing import Any
 
@@ -17,6 +19,7 @@ app = FastAPI(title="report-api")
 KEYCLOAK_BASE_URL = os.getenv("KEYCLOAK_BASE_URL", "http://keycloak:8080")
 KEYCLOAK_REALM = os.getenv("KEYCLOAK_REALM", "reports-realm")
 JWKS_URL = f"{KEYCLOAK_BASE_URL}/realms/{KEYCLOAK_REALM}/protocol/openid-connect/certs"
+USERINFO_URL = f"{KEYCLOAK_BASE_URL}/realms/{KEYCLOAK_REALM}/protocol/openid-connect/userinfo"
 
 EXPECTED_ISS = os.getenv(
     "KEYCLOAK_EXPECTED_ISS",
@@ -124,6 +127,36 @@ def _validate_access_token(token: str) -> dict:
         raise HTTPException(status_code=401, detail="Invalid token")
 
 
+def _fetch_userinfo(token: str) -> dict[str, Any]:
+    req = urllib.request.Request(
+        USERINFO_URL,
+        headers={"Authorization": f"Bearer {token}"},
+        method="GET",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            body = resp.read().decode("utf-8", errors="replace")
+            return json.loads(body)
+    except (urllib.error.URLError, urllib.error.HTTPError, json.JSONDecodeError):
+        return {}
+
+
+def _resolve_user_key(claims: dict[str, Any], token: str) -> str | None:
+    # В некоторых конфигурациях Keycloak access token может быть "облегчённым"
+    # и не содержать preferred_username. Тогда берём userinfo по токену.
+    for field in ("preferred_username", "username"):
+        value = claims.get(field)
+        if value:
+            return str(value)
+
+    userinfo = _fetch_userinfo(token)
+    for field in ("preferred_username", "username"):
+        value = userinfo.get(field)
+        if value:
+            return str(value)
+    return None
+
+
 def _head_object_exists(key: str) -> bool:
     s3 = _get_s3()
     try:
@@ -178,7 +211,7 @@ async def get_report(
     token = authorization.removeprefix("Bearer ").strip()
     claims = _validate_access_token(token)
 
-    user_key = claims.get("preferred_username") or claims.get("username")
+    user_key = _resolve_user_key(claims, token)
     if not user_key:
         raise HTTPException(status_code=401, detail="Token has no user identifier")
 
